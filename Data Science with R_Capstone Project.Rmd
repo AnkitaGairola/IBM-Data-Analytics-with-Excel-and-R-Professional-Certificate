@@ -1,0 +1,1373 @@
+---
+title: "Data Science with R_Capstone Project"
+author: "Ankita Gairola"
+date: "2023-08-22"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project scenario
+
+Your project is to analyze how weather would affect bike-sharing demand in urban areas. To complete this project, you need to first collect and process related weather and bike-sharing demand data from various sources, perform exploratory data analysis on the data, and build predictive models to predict bike-sharing demand. You will combine your results and connect them to a live dashboard displaying an interactive map and associated visualization of the current weather and the estimated bike demand.
+
+## Tasks:
+
+1. Collecting and understanding data from multiple sources
+
+2. Performing data wrangling and preparation with regular expressions and Tidyverse
+
+3. Performing exploratory data analysis and visualization using Tidyverse and ggplot2
+
+4. Performing modelling the data with linear regressions using Tidymodels
+
+5. Building an interactive dashboard using R Shiny
+
+
+### Web scrape a Global Bike-Sharing Systems Wiki Page
+
+
+#### Import Packages
+
+install.packages("tidyverse")
+
+install.packages("rio")
+
+install.packages("lubridate")
+
+install.packages("ggplot2")
+
+install.packages("tidymodels")
+
+install.packages("ggthemes")
+
+install.packages("ggpubr")
+
+install.packages("glmnet")
+
+install.packages("rvest")
+
+install.packages("fastDummies")
+
+```{r}
+library(rio)
+
+library(lubridate)
+
+library(tidyverse)
+
+library(ggplot2)
+
+library(ggpubr)
+
+library(glmnet)
+
+library(rvest)
+
+library(fastDummies)
+
+library(ggthemes)
+
+library(tidymodels)
+
+Sys.setlocale("LC_TIME", "English_Hong Kong")  
+options(repr.plot.width = 16, repr.plot.height = 9)
+
+```
+
+#### Task_1: Extract bike sharing systems HTML table from a Wiki page and convert it into a data frame
+
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_bicycle-sharing_systems"
+
+data <- read_html(url) 
+
+table_nodes <- html_nodes(data, "table")
+
+bike_df <- data %>% 
+  html_element("table") %>% 
+  html_table()
+print(df)
+```
+
+##### Export to csv file
+
+```{r}
+write.csv(bike_df,"E:/Coursera/Data Science with R_Capstone Project/raw_bike_sharing_system.csv")
+```
+
+#### Task_2: The current weather data for a city using OpenWeather API
+
+install.packages("httr")
+
+```{r}
+library(httr)
+```
+
+##### URL for Current Weather API
+
+```{r}
+current_weather_url <- 'https://api.openweathermap.org/data/2.5/weather'
+```
+
+##### List to hold URL parameters for current weather API
+
+```{r}
+my_api_key <- "63cbacfaa61878d2acc06654c13fd311"
+
+current_query <- list(q="Seoul",appid=my_api_key,units="metric")
+```
+
+##### HTTP request to the current weather API
+
+```{r}
+response <- GET(current_weather_url, query=current_query)
+http_type(response)
+```
+
+##### Read JASON Http data
+
+```{r}
+json_result <- content(response, as="parsed")
+json_result
+```
+
+```{r}
+class(json_result)
+
+json_result
+```
+
+##### Create some empty vectors to hold data temporarily
+
+```{r}
+city <-c()
+weather <- c()
+visibility <- c()
+temp <- c()
+temp_min <- c()
+temp_max <- c()
+pressure <- c()
+humidity <- c()
+wind_speed <- c()
+wind_deg <- c()
+```
+
+##### Assign the values in the json_result list into different vectors
+
+```{r}
+city <- c(city, json_result$name)
+weather <- c(weather, json_result$weather[[1]]$main)
+visibility <- c(visibility, json_result$visibility)
+temp <- c(temp, json_result$main$temp)
+temp_min <- c(temp_min, json_result$main$temp_min)
+temp_max <- c(temp_max, json_result$main$temp_max)
+pressure <- c(pressure, json_result$main$pressure)
+humidity <- c(humidity, json_result$main$humidity)
+wind_speed <- c(wind_speed, json_result$wind$speed)
+wind_deg <- c(wind_deg, json_result$wind$deg)
+```
+
+
+##### Combine all vectors as columns of a data frame
+
+```{r}
+weather_data_frame <- data.frame(city = city,
+                                 weather=weather, 
+                                 visibility=visibility, 
+                                 temp=temp, 
+                                 temp_min=temp_min, 
+                                 temp_max=temp_max, 
+                                 pressure=pressure, 
+                                 humidity=humidity, 
+                                 wind_speed=wind_speed, 
+                                 wind_deg=wind_deg)
+```
+
+
+```{r}
+print(weather_data_frame)
+```
+
+#### Task_3: 5-day weather forecasts for cities using the OpenWeather API
+
+```{r}
+city <- c()
+weather <- c()
+visibility <- c()
+temp <- c()
+temp_min <- c()
+temp_max <- c()
+pressure <- c()
+humidity <- c()
+wind_speed <- c()
+wind_deg <- c()
+```
+
+
+```{r}
+# Get 5 -day weather forecast for a list of cities
+weather_forecast_by_cities <- function(city_names) {
+  df <- data.frame()
+  for (city_name in city_names) {
+    
+    #forecast API URL
+    forecast_url <-'https://api.openweathermap.org/data/2.5/weather' 
+    
+    #create query parameter
+    forecast_query <- list(q=city_name,appid=my_api_key, units="metric")
+    
+    #make HTTP GET call for the given city
+    response <- GET(forecast_url, query=forecast_query)
+    
+    json_result <- content(response, as="parsed")
+    results <- json_result$list
+    
+    #Loop the json result
+    for(result in results) {
+      city <- c(city, city_name)
+    }
+    
+    # Add R lists into a data frame
+    city <- c(city, json_result$name)
+    weather <- c(weather, json_result$weather[[1]]$main)
+    visibility <- c(visibility, json_result$visibility)
+    temp <- c(temp, json_result$main$temp)
+    temp_min <-c(temp_min, json_result$main$temp_min)
+    temp_max <- c(temp_max, json_result$main$temp_max)
+    pressure <- c(pressure, json_result$main$pressure)
+    humidity <- c(humidity, json_result$main$humidity)
+    wind_speed <- c(wind_speed, json_result$wind$speed)
+    wind_deg <-c(wind_deg, json_result$wind$deg)
+    
+    #Combine all vector into data frame
+    df <- data.frame(city = city,
+                            weather=weather, 
+                             visibility=visibility, 
+                             temp=temp, 
+                             temp_min=temp_min, 
+                             temp_max=temp_max, 
+                             pressure=pressure, 
+                             humidity=humidity, 
+                             wind_speed=wind_speed, 
+                             wind_deg=wind_deg)
+  }
+  return(df)
+}
+```
+
+
+```{r}
+cities <- c("Seoul", "Washington, D.C.", "Paris", "Suzhou", "New Delhi", "Kyoto", "Cologne", "London" )
+cities_weather_df <- weather_forecast_by_cities(cities)
+print(cities_weather_df)
+```
+
+
+#### Task_4: Download datasets as csv files from cloud storage
+
+##### some general city information such as name and locations
+
+```{r}
+url <- "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-RP0321EN-SkillsNetwork/labs/datasets/raw_worldcities.csv"
+
+
+download.file(url, destfile = "raw_worldcities.csv")
+```
+
+##### specific hourly Seoul bike sharing demand dataset
+
+```{r}
+url <- "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-RP0321EN-SkillsNetwork/labs/datasets/raw_seoul_bike_sharing.csv"
+
+
+download.file(url, destfile = "raw_seoul_bike_sharing.csv")
+```
+
+##### Download raw_cities_weather_forecast
+
+```{r}
+url <- "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-RP0321EN-SkillsNetwork/labs/datasets/raw_cities_weather_forecast.csv"
+
+download.file(url, destfile = "raw_cities_weather_forecast.csv")
+```
+
+### Data Wrangling with Regular Expressions
+
+```{r}
+dataset_list <- c('raw_bike_sharing_systems.csv', 'raw_seoul_bike_sharing.csv', 'raw_cities_weather_forecast.csv', 'raw_worldcities.csv')
+```
+
+
+#### Task_5: Standardize column names for all collected datasets
+
+##### Convert iterate over the above datasets and convert their column names
+
+
+```{r}
+for (dataset_name in dataset_list) {
+  if (file.exists(dataset_name)) {  # Check if the file exists
+    dataset <- read.csv(dataset_name, fileEncoding = "UTF-8")  # Specify encoding if needed
+    names(dataset) <- toupper(names(dataset))
+    names(dataset) <- str_replace_all(names(dataset), " ", "_")
+    write.csv(dataset, dataset_name, row.names = FALSE)
+  } else {
+    cat("File not found:", dataset_name, "\n")
+  }
+}
+
+```
+
+### Process the web-scraped bike sharing system dataset
+
+##### Load Dataset
+
+```{r}
+bike_sharing_df <- read.csv("E:/Coursera/Data Science with R_Capstone Project/raw_bike_sharing_system.csv")
+
+head(bike_sharing_df)
+```
+```{r}
+sub_bike_sharing_df <- bike_sharing_df %>% 
+  select(Country, City, System, Bicycles)
+
+
+sub_bike_sharing_df %>% 
+  summarize_all(class) %>% 
+  gather(variable, class)
+```
+
+```{r}
+find_character <- function(strings) grepl("[^0-9]", strings)
+
+sub_bike_sharing_df %>% 
+  select(Bicycles) %>% #Use the function to check BICYCLES column
+  filter(find_character(Bicycles)) %>% 
+  slice(0:10)
+```
+Because there are some values associated with numeric and non-numeric value, BYCICLES was classified as character.
+
+Check if COUNTRY, CITY, SYSTEM have any reference link, such as Melbourne[12]
+
+##### Create a function to check if there is any reference link in the values
+
+```{r}
+ref_pattern <- "\\[[A-z0-9]+\\]"
+find_reference_pattern <- function(strings) grepl(ref_pattern, strings)
+```
+
+#####  Check whether the CITY column has any reference links
+
+```{r}
+sub_bike_sharing_df %>% 
+  select(City) %>% 
+  filter(find_reference_pattern(City)) %>% 
+  slice(1:10)
+```
+ 
+##### Check whether the System column has any reference links
+ 
+```{r}
+sub_bike_sharing_df %>% 
+    select(System) %>% 
+    filter(find_reference_pattern(System)) %>%
+    slice(0:10)
+```
+ 
+#### Task_6: Remove undesired reference links using regular expressions
+
+##### remove reference link
+
+```{r}
+remove_ref <- function(strings) {
+  ref_pattern <- "\\[[A-z0-9]+\\]" # Define a pattern matching a reference link such as [1]
+  result <- stringr::str_replace_all(strings,ref_pattern,"")  # Replace all matched substrings with a white space
+  result <-  trimws(result) 
+    return(result)
+}
+```
+
+install.packages("magrittr")
+
+install.packages("dplyr")
+
+```{r}
+library(magrittr)
+
+library(dplyr)
+```
+
+
+#####  Use the function to remove the reference links
+
+```{r}
+sub_bike_sharing_df %<>% #use mutate and remove_ref fcn to remove ref in CITY and SYSTEM
+  mutate(System=remove_ref(System),
+         City=remove_ref(City))
+```
+
+##### Check whether all reference links are removed
+
+```{r}
+
+sub_bike_sharing_df %>% 
+  select(Country, City, System, Bicycles) %>% 
+  filter (find_reference_pattern(Country) | find_reference_pattern(City) | find_reference_pattern(City) |find_reference_pattern(Bicycles) )
+```
+
+#### Task_7: Extract the numeric value using regular expressions
+
+```{r}
+extract_num <- function(columns) {
+  digitals_pattern <- "\\d+" #define a pattern matching digital substring
+  str_extract(columns,digitals_pattern) %>% 
+  as.numeric()
+}
+```
+
+install.packages("stringr")
+
+```{r}
+library(stringr)
+```
+
+```{r}
+sub_bike_sharing_df %<>% #use mutate and to apply function to BICYLCLES
+  mutate(Bicycles=extract_num(Bicycles))
+```
+
+```{r}
+write.csv(sub_bike_sharing_df, "E:/Coursera/Data Science with R_Capstone Project/bike_sharing_system.csv")
+```
+
+### Data Wrangling with dplyr
+
+Quick look at the dataset
+
+```{r}
+summary(bike_sharing_df)
+
+dim(bike_sharing_df)
+```
+
+#### Task_8: Detect and handle missing values
+
+```{r}
+dataset_list <- c('bike_sharing_system.csv','raw_seoul_bike_sharing.csv')
+for (dataset_name in dataset_list) {
+  dataset <- read.csv(dataset_name)
+  names(dataset) <- toupper(names(dataset))
+  names(dataset) <- str_replace_all(names(dataset), " ", "_")
+  write.csv(dataset, dataset_name, row.names = FALSE)
+}
+```
+
+
+```{r}
+bike_sharing_df <- read.csv("raw_seoul_bike_sharing.csv")
+summary(bike_sharing_df)
+dim(bike_sharing_df)
+```
+
+
+##### missing values in the TEMPERATURE column
+
+```{r}
+bike_sharing_df %>% 
+                filter(is.na(TEMPERATURE))
+```
+
+
+##### missing value in RENTED_BIKE_COUNT column
+
+
+```{r}
+bike_sharing_df %>% 
+                filter(is.na(RENTED_BIKE_COUNT))
+```
+
+
+##### calculate the average temperature in summer
+
+```{r}
+summer_temp <- bike_sharing_df[bike_sharing_df$SEASONS == "Summer", ]
+summer_avg_temp <- mean(summer_temp$TEMPERATURE, na.rm=TRUE)
+print(summer_avg_temp)
+```
+
+##### Impute missing values for TEMPERATURE column with summer average temperature
+
+```{r}
+bike_sharing_df["TEMPERATURE"][is.na(bike_sharing_df["TEMPERATURE"])] <- summer_avg_temp
+```
+
+##### summary of the dataset
+
+```{r}
+summary(bike_sharing_df)
+```
+
+##### Save the dataset as `seoul_bike_sharing.csv
+
+```{r}
+write.csv(bike_sharing_df, "E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing.csv")
+```
+
+
+#### Task_9: Create indicator (dummy) variables for categorical variables
+
+
+```{r}
+bike_sharing_df <- read.csv("E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing.csv")
+```
+
+
+##### Using mutate() function to convert HOUR column into character type
+
+```{r}
+bike_sharing_df %>% 
+  mutate(HOUR=as.character(HOUR)) %>%  #convert HOUR to character because it's from 0 to 23
+head(10)
+```
+
+install.packages("pacman")
+
+```{r}
+library(pacman)
+```
+
+
+```{r}
+pacman:: p_load(fastDummies)
+```
+
+
+##### Convert SEASONS, HOLIDAY, FUNCTIONING_DAY, and HOUR columns into indicator columns.
+
+```{r}
+bike_sharing_df <- dummy_cols(bike_sharing_df, select_columns = "HOUR")
+bike_sharing_df <- dummy_cols(bike_sharing_df, select_columns = "HOLIDAY")
+bike_sharing_df <- dummy_cols(bike_sharing_df, select_columns = "SEASONS")
+
+#Change the colnames for shorterning
+colnames(bike_sharing_df)[c(40,41,42,43,44,45)] <- c("HOLIDAY", "NO HOLIDAY", "AUTUMN", "SPRING", "SUMMER","WINTER")
+```
+
+
+##### Save the dataset as `seoul_bike_sharing_converted.csv`
+
+```{r}
+write.csv(bike_sharing_df, "E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing_converted.csv")
+```
+
+
+#### Task_10: Normalize data using Min-Max normalization
+
+```{r}
+minmax_norm <- function(x){       
+  (x-min(x))/(max(x)-min(x))}
+```
+
+```{r}
+bike_sharing_df <- read.csv("E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing_converted.csv")
+
+#Apply min-max normalization function to numerical columns in df
+
+bike_sharing_df %<>%              
+  mutate(TEMPERATURE = minmax_norm(TEMPERATURE),
+         HUMIDITY = minmax_norm(HUMIDITY),
+         WIND_SPEED = minmax_norm(WIND_SPEED),
+         VISIBILITY = minmax_norm(VISIBILITY),
+         DEW_POINT_TEMPERATURE = minmax_norm(DEW_POINT_TEMPERATURE),
+         SOLAR_RADIATION = minmax_norm(SOLAR_RADIATION),
+         RAINFALL = minmax_norm(RAINFALL),
+         SNOWFALL = minmax_norm(SNOWFALL)) 
+head(bike_sharing_df)
+```
+
+##### Save the dataset as `seoul_bike_sharing_converted_normalized.csv
+
+```{r}
+write.csv(bike_sharing_df,"E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing_converted_normalized.csv")
+```
+
+### Standardize the column names again for the new datasets
+
+```{r}
+dataset_list <- c('seoul_bike_sharing.csv', 'seoul_bike_sharing_converted.csv', 'seoul_bike_sharing_converted_normalized.csv')
+
+for (dataset_name in dataset_list) {
+  dataset <- read.csv(dataset_name)
+  names(dataset) <- toupper(names(dataset))
+  names(dataset) <- str_replace_all(names(dataset), " ", "_")
+  write.csv(dataset, dataset_name, row.names = FALSE)
+}
+```
+
+
+### Exploratory Data Analysis with tidyverse and ggplot2
+
+
+### Task_11: Load the dataset
+
+```{r}
+seoul_bike_sharing <- read.csv("E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing.csv")
+
+str(seoul_bike_sharing)
+```
+
+#### Task_12: Recast DATE as a date
+
+```{r}
+seoul_bike_sharing$DATE = as.Date(seoul_bike_sharing$DATE,format="%d/%m/%Y") #recast date as a date format
+
+seoul_bike_sharing$HOUR <- factor(seoul_bike_sharing$HOUR, levels = 0:23, ordered = TRUE) #cast the HOUR as categorical variables
+
+seoul_bike_sharing$SEASONS <- factor(seoul_bike_sharing$SEASONS, levels=c("Winter", "Spring", "Summer","Autumn"))
+
+class(seoul_bike_sharing$HOUR)
+```
+
+#### Task_13 - Cast HOURS as a categorical variable
+
+```{r}
+class(seoul_bike_sharing$DATE)
+```
+
+```{r}
+class(seoul_bike_sharing$SEASONS)
+```
+
+```{r}
+sum(is.na(seoul_bike_sharing))
+```
+
+### Descriptive Statistics
+
+#### Task_14: Dataset Summary
+
+```{r}
+summary(seoul_bike_sharing)
+```
+
+#### Task_15: Based on the above stats, calculate how many Holidays there are.
+
+```{r}
+holiday_count <- table(seoul_bike_sharing$HOLIDAY)
+num_holiday <- holiday_count['Holiday']
+num_holiday
+```
+#### Task_16: Calculate the percentage of records that fall on a holiday.
+
+```{r}
+num_holiday/(num_holiday +holiday_count['No Holiday'])
+```
+
+#### Task_17: Given there is exactly a full year of data, determine how many records we expect to have.
+
+```{r}
+# Define the frequency of data recording (e.g., daily)
+data_frequency <- "daily"
+
+# Define the number of days in a year
+days_in_year <- 365
+
+# Calculate the number of records in a year
+if (data_frequency == "daily") {
+  num_records_in_year <- days_in_year
+} else if (data_frequency == "hourly") {
+  # If recorded hourly, calculate records per day and multiply by days in a year
+  records_per_day <- 24  # 24 records per day if hourly
+  num_records_in_year <- records_per_day * days_in_year
+} else {
+  # Add additional conditions for other data frequencies if needed
+  print("Unsupported data frequency")
+}
+
+# Print the result
+print(paste("Number of records in a year:", num_records_in_year))
+
+```
+#### Task_18: Given the observations for the 'FUNCTIONING_DAY' how many records must there be?
+
+```{r}
+# Assuming you have a data frame named 'your_data' with a 'FUNCTIONING_DAY' column
+# Count the unique values of 'FUNCTIONING_DAY'
+unique_functioning_days <- unique(seoul_bike_sharing$FUNCTIONING_DAY)
+
+# Calculate the number of records based on unique functioning days
+num_records <- length(unique_functioning_days)
+
+# Print the result
+print(paste("Number of records based on 'FUNCTIONING_DAY':", num_records))
+
+```
+#### Task_19: Calculate the seasonal total rainfall and snowfall.
+
+```{r}
+
+seasonal_total <- seoul_bike_sharing %>% 
+  group_by(SEASONS) %>% 
+  summarize(total_rainfall=sum(RAINFALL), total_snowfall=sum(SNOWFALL))
+seasonal_total
+```
+
+
+### Data Visualization
+
+#### Task_20: Create a scatter plot of RENTED_BIKE_COUNT vs DATE
+
+
+```{r}
+ggplot(seoul_bike_sharing, aes(x = DATE, y = RENTED_BIKE_COUNT)) +
+  geom_point() +
+  labs(x = "Date", y = "Rented Bike Count") +
+  theme_minimal()
+
+```
+
+
+
+#### Task_21: Create the same plot of the RENTED_BIKE_COUNT time series, but now add HOURS as the colour.
+
+```{r}
+seoul_bike_sharing %>%
+  ggplot(aes(x = DATE, y = RENTED_BIKE_COUNT, color = factor(HOUR))) +
+  geom_point() +
+  labs(x = "Date", y = "Rented Bike Count", color = "Hour of Day") +
+  scale_color_discrete() +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+seoul_bike_sharing %>%
+  mutate(DATE = as.Date(DATE, format = "%d/%m/%Y")) %>%
+  ggplot(aes(x = DATE, y = RENTED_BIKE_COUNT, color = factor(HOUR))) +
+  geom_point(alpha = 0.5) +
+  scale_x_date(date_labels = "%d/%m/%Y") +
+  labs(x = "Date", color = "Hour of Day") +
+  theme_minimal()
+
+```
+
+#### Task_22: Create a histogram overlaid with a kernel density curve
+
+```{r}
+ggplot(seoul_bike_sharing, aes(RENTED_BIKE_COUNT)) +
+  geom_histogram(aes(y=..density..))+
+  geom_density(col="green")
+```
+
+#### Task_23: Use a scatter plot to visualize the correlation between RENTED_BIKE_COUNT and TEMPERATURE by SEASONS
+
+```{r}
+get_season <- function(date) {
+  month <- as.POSIXlt(date)$mon + 1  # Extract the month from the date
+  case_when(
+    month %in% c(3, 4, 5) ~ "Spring",
+    month %in% c(6, 7, 8) ~ "Summer",
+    month %in% c(9, 10, 11) ~ "Fall",
+    TRUE ~ "Winter"
+  )
+}
+
+# Create a new column "SEASON" based on the date
+seoul_bike_sharing <- seoul_bike_sharing %>%
+  mutate(SEASON = get_season(DATE))
+
+# Create the scatter plot with facet_wrap
+ggplot(seoul_bike_sharing, aes(x = TEMPERATURE, y = RENTED_BIKE_COUNT, color = as.factor(HOUR), alpha = as.factor(HOUR))) +
+  geom_point() +
+  facet_wrap(~SEASON, nrow = 2) +
+  labs(x = "Temperature", y = "Rented Bike Count", color = "Hour of Day", alpha = "Hour of Day") +
+  scale_alpha_discrete(range = c(0.3, 1)) +  # Adjust opacity range for discrete scale
+  theme_minimal()
+
+
+```
+
+Comparing this plot to the same plot below, but without grouping by SEASONS, shows how important seasonality is in explaining bike rental counts.
+
+```{r}
+ggplot(seoul_bike_sharing) +
+   geom_point(aes(x=TEMPERATURE,y=RENTED_BIKE_COUNT,colour=HOUR),alpha=1/5)
+```
+
+
+#### Task_24: Create a display of four boxplots of RENTED_BIKE_COUNT vs. HOUR grouped by SEASONS
+
+```{r}
+# Create a new column "SEASON" based on the date
+seoul_bike_sharing <- seoul_bike_sharing %>%
+  mutate(MONTH = as.integer(format(DATE, "%m"))) %>%
+  mutate(SEASON = case_when(
+    MONTH %in% 3:5 ~ "Spring",
+    MONTH %in% 6:8 ~ "Summer",
+    MONTH %in% 9:11 ~ "Fall",
+    TRUE ~ "Winter"
+  )) %>%
+  select(-MONTH)  # Remove the temporary MONTH column
+
+# Create boxplots grouped by SEASON and faceted by SEASON
+ggplot(seoul_bike_sharing, aes(x = HOUR, y = RENTED_BIKE_COUNT)) +
+  geom_boxplot() +
+  labs(x = "Hour of Day", y = "Rented Bike Count") +
+  facet_wrap(~SEASON, nrow = 2) +
+  theme_minimal()
+
+
+```
+
+#### Task_25: Group the data by DATE, and use the summarize() function to calculate the daily total rainfall and snowfall.
+
+```{r}
+
+# Group data by DATE and calculate daily total rainfall and snowfall
+daily_weather_totals <- seoul_bike_sharing %>%
+  group_by(DATE) %>%
+  summarize(TotalRainfall = sum(RAINFALL, na.rm = TRUE),
+            TotalSnowfall = sum(SNOWFALL, na.rm = TRUE))
+
+# Print the resulting daily weather totals
+print(daily_weather_totals)
+
+# Create a plot of daily total rainfall and snowfall
+ggplot(daily_weather_totals, aes(x = DATE)) +
+  geom_line(aes(y = TotalRainfall, color = "Rainfall"), size = 1) +
+  geom_line(aes(y = TotalSnowfall, color = "Snowfall"), size = 1) +
+  labs(x = "Date", y = "Total Precipitation (mm)") +
+  scale_color_manual(values = c("Rainfall" = "blue", "Snowfall" = "red")) +
+  theme_minimal()
+
+```
+
+
+#### Task_26: Determine how many days had snowfall
+
+```{r}
+# Count the number of days with snowfall
+days_with_snowfall <- sum(seoul_bike_sharing$SNOWFALL > 0)
+
+# Print the result
+print(paste("Number of days with snowfall:", days_with_snowfall))
+
+```
+
+### Predict Hourly Rented Bike Count using Basic Linear Regression Models
+
+install.packages("rlang")
+
+install.packages("stringr")
+
+install.packages("broom")
+
+```{r}
+library(rlang)
+
+library(stringr)
+
+library(broom)
+```
+
+The seoul_bike_sharing_converted_normalized.csv will be our main dataset
+
+```{r}
+bike_sharing_df <- read.csv("E:/Coursera/Data Science with R_Capstone Project/seoul_bike_sharing_converted_normalized.csv")
+```
+
+
+We won't be using the DATE column, because 'as is', it basically acts like an data entry index. (However, given more time, we could use the DATE colum to create a 'day of week' or 'isWeekend' column, which we might expect has an affect on preferred bike rental times.) We also do not need the FUNCTIONAL DAY column because it only has one distinct value remaining (YES) after missing value processing.
+
+```{r}
+bike_sharing_df <- bike_sharing_df %>% 
+  select(-DATE, -FUNCTIONING_DAY, -X.2, -X.1, -X, -HOUR, -SEASONS, -HOLIDAY)
+```
+
+```{r}
+colnames(bike_sharing_df)[c(34,35)] <- c("HOLIDAY", "NO_HOLIDAY")
+```
+
+
+#### Task_27: Split training and testing data
+
+
+```{r}
+set.seed(1234)
+data_split <- initial_split(bike_sharing_df, prop = 3/4) #set the training dataset with 75% of the original dataset
+bike_train <- training(data_split)
+bike_test <- testing(data_split)
+```
+
+
+#### Task_28: Build a linear regression model using weather variables only
+
+```{r}
+
+lm_model_weather <- lm(RENTED_BIKE_COUNT ~ TEMPERATURE + HUMIDITY + WIND_SPEED + VISIBILITY + DEW_POINT_TEMPERATURE + SOLAR_RADIATION + RAINFALL + SNOWFALL,
+                        data=bike_train)
+summary(lm_model_weather)
+```
+
+#### Task_29:TASK: Build a linear regression model using all variables
+
+```{r}
+lm_model_all <- lm(RENTED_BIKE_COUNT ~ .,
+                        data=bike_train)
+summary(lm_model_all)
+```
+
+
+```{r}
+lm_model_all <- lm(RENTED_BIKE_COUNT ~ .,
+                        data=bike_train)
+summary(lm_model_all$fit)
+```
+
+#### Task_30: Model evaluation and identification of important variables
+
+```{r}
+# Use model to make prediction
+lm_model_weather_pred <- predict(lm_model_weather, newdata = bike_test)
+test_results_weather <- data.frame(PREDICTION=lm_model_weather_pred, TRUTH = bike_test$RENTED_BIKE_COUNT)
+
+lm_model_all_pred <- predict(lm_model_all, newdata = bike_test)
+```
+
+
+```{r}
+test_results_all <- data.frame(PREDICTION = lm_model_all_pred, TRUTH = bike_test$RENTED_BIKE_COUNT)
+
+summary(lm_model_weather)$r.squared #0.4303
+```
+
+```{r}
+summary(lm_model_all)$r.squared #0.6589
+```
+
+```{r}
+rmse_weather <- sqrt(mean((test_results_weather$TRUTH-test_results_weather$PREDICTION)^2))
+rmse_all <- sqrt(mean((test_results_all$TRUTH-test_results_all$PREDICTION)^2))
+
+print(rmse_weather) #474.6247
+```
+
+
+```{r}
+print(rmse_all) #361.9543
+```
+
+```{r}
+# create a data frame of coefficients
+coef_df <- tidy(lm_model_all)
+```
+
+
+
+```{r}
+# plot the coefficients in a bar chart (coef plot.png)
+ggplot(coef_df, aes(x = reorder(term, desc(abs(estimate))), y = abs(estimate))) +
+  geom_bar(stat = "identity", fill = "grey") +
+  coord_flip() +
+  xlab("Predictor") +
+  ylab("Coefficient") +
+  ggtitle("Coefficients of Linear Model") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+### Refine the Baseline Regression Models
+
+```{r}
+#Define a linear regression model specification.
+lm_spec <- linear_reg() %>%
+  set_engine("lm") %>% 
+  set_mode("regression")
+```
+
+
+```{r}
+#Split the data into training and testing datasets.
+set.seed(1234)
+data_split <- initial_split(bike_sharing_df, prop = 4/5)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+```
+
+
+#### Task_31: Add polynomial terms
+
+```{r}
+#(poly1.png)
+ggplot(data=bike_train, aes(RENTED_BIKE_COUNT, TEMPERATURE)) +
+  geom_point() #nonlinearity -> polynomial regression 
+```
+
+```{r}
+# Plot the higher order polynomial fits
+ggplot(data=train_data, aes(RENTED_BIKE_COUNT, TEMPERATURE)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", formula = y ~ x, color="red") + 
+    geom_smooth(method = "lm", formula = y ~ poly(x, 2), color="yellow") + 
+    geom_smooth(method = "lm", formula = y ~ poly(x, 4), color="green") + 
+    geom_smooth(method = "lm", formula = y ~ poly(x, 6), color="blue")
+```
+
+```{r}
+# Fit a linear model with higher order polynomial on some important variables 
+lm_poly <- lm(RENTED_BIKE_COUNT ~ poly(TEMPERATURE, 6) +
+                poly(HUMIDITY, 4)+
+                poly(RAINFALL,2), data = bike_train)
+summary(lm_poly$fit)
+```
+
+```{r}
+lm_poly_pred <- predict(lm_poly, newdata = bike_test) #predict
+test_results_poly = data.frame(PREDICTION = lm_poly_pred, TRUTH = bike_test$RENTED_BIKE_COUNT) #create df for test results
+
+#convert all negative prediction to 0 (RENTED_BIKE_COUNT can't be negative)
+test_results_poly <- test_results_poly %>% 
+  mutate(PREDICTION = ifelse(PREDICTION <0, 0, PREDICTION))
+
+#calculate R_squared and RMSE (better than lm_weather but worse than lm_all)
+summary(lm_poly)$r.squared #0.4861
+```
+
+
+```{r}
+rmse_poly <- sqrt(mean ( (test_results_poly$TRUTH - test_results_poly$PREDICTION)^2) )
+rmse_poly #451.7091
+```
+
+
+#### Task_32: Add interaction terms
+
+
+The effect of predictor variable TEMPERATURE on RENTED_BIKE_COUNT may also depend on other variables such as HUMIDITY, RAINFALL, or both (they interact) and the effect of SEASON on RENTED_BIKE_COUNT may also depend on HOLIDAY, HOUR, or both.
+
+```{r}
+#Task: Add Interaction Terms
+lm_poly_interaction <- lm(RENTED_BIKE_COUNT ~ poly(TEMPERATURE, 6) + poly(HUMIDITY, 4)+poly(RAINFALL,2)+
+                          RAINFALL*HUMIDITY + TEMPERATURE*HUMIDITY,
+                          data = bike_train)
+summary(lm_poly_interaction)
+```
+
+```{r}
+lm_poly_interaction_pred <- predict(lm_poly_interaction, newdata = bike_test)
+```
+
+```{r}
+test_results_poly_interaction <- data.frame(PREDICTION = lm_poly_interaction_pred, TRUTH=bike_test$RENTED_BIKE_COUNT)
+
+#model performance (improved model)
+summary(lm_poly_interaction)$r.squared #0.5086
+```
+
+
+```{r}
+rmse_poly_interaction <- rmse(test_results_poly_interaction, TRUTH, PREDICTION )
+rmse_poly_interaction #442
+```
+
+#### Task_33:  Add regularization
+
+install.packages("glmnet")
+
+install.packages("yardstick")
+
+```{r}
+library(glmnet)
+
+library(yardstick)
+```
+```{r}
+#prediction function
+model_prediction <- function(lm_model, test_data) {
+  results <- lm_model %>% 
+    predict(new_data=test_data) %>% 
+    mutate(TRUTH=test_data$RENTED_BIKE_COUNT)
+  results[results<0] <-0
+  return(results)
+}
+
+#model evaluation function
+model_evaluation <- function(results) {
+  rmse = rmse(results, truth=TRUTH, estimate=.pred)
+  rsq = rsq(results, truth=TRUTH, estimate=.pred)
+  print(rmse)
+  print(rsq)
+}
+```
+
+
+```{r}
+#Use grid to define the best penalty (lambda)
+penalty_value <- 10^seq(-4,4, by = 0.5) #penalty values ranging from 10^-4 to 10^4
+x = as.matrix(bike_train[,-1]) #define a matrix for CV
+y= bike_train$RENTED_BIKE_COUNT
+```
+
+
+
+```{r}
+#We can use cross-validation to define the lambda with 10-fold validation
+
+# Impute missing values with mean
+x[is.na(x)] <- mean(x, na.rm = TRUE)
+y[is.na(y)] <- mean(y, na.rm = TRUE)
+
+# Run cross-validation for Ridge, Lasso, and Elastic Net
+cv_ridge <- cv.glmnet(x, y, alpha = 0, lambda = penalty_value, nfolds = 10)
+cv_lasso <- cv.glmnet(x, y, alpha = 1, lambda = penalty_value, nfolds = 10)
+cv_elasticnet <- cv.glmnet(x, y, alpha = 0.5, lambda = penalty_value, nfolds = 10)
+
+
+```
+
+#### Task_34: Experiment to search for improved models
+
+```{r}
+
+library(dplyr)
+
+library(tidymodels)
+
+#glmnet spec (using CV above, best optimal is 0.3 and 0.5)
+glmnet_spec <- linear_reg(penalty = 0.3, mixture=0.5) %>% 
+  set_engine("glmnet") %>% 
+  set_mode("regression")
+```
+
+The performance requirements for your best model:
+
+1. The RMSE should be less than 330 (rougly 10% of the max value in test dataset)
+
+2. R-squared should be greater than 0.72
+
+```{r}
+#Fit the model (best model)
+glmnet_best <- glmnet_spec %>% 
+  fit(RENTED_BIKE_COUNT ~ RAINFALL*HUMIDITY*TEMPERATURE + SPRING*SUMMER*HOLIDAY*HOUR_18* HOUR_19* HOUR_8* HOUR_21* HOUR_20* HOUR_4 + 
+        poly(RAINFALL, 8) + poly(HUMIDITY, 5) +  poly(TEMPERATURE, 5) + poly(DEW_POINT_TEMPERATURE, 5) + poly(SOLAR_RADIATION, 5) + poly(SNOWFALL,5) + 
+        SPRING + SUMMER  + HOLIDAY + WIND_SPEED + VISIBILITY + 
+        HOUR_18+ HOUR_4 + HOUR_5 + HOUR_3 + HOUR_19 + HOUR_11 + HOUR_8 + HOUR_21 + HOUR_10 + HOUR_2 + HOUR_20,
+      data = bike_train)
+
+glmnet_best_pred <- model_prediction(glmnet_best, bike_test)
+model_evaluation(glmnet_best_pred) #rsq = 0.783, rmse = 296
+```
+
+```{r}
+glmnet_best_rsq = rsq(glmnet_best_pred, truth = TRUTH, estimate = .pred)
+glmnet_best_rmse = rmse(glmnet_best_pred, truth = TRUTH, estimate = .pred)
+```
+
+
+
+```{r}
+# Fit the model (with top 10 coeficients)
+glmnet_top10 <- glmnet_spec %>% 
+  fit(RENTED_BIKE_COUNT ~ RAINFALL*HUMIDITY*TEMPERATURE + SPRING*SUMMER + SUMMER +
+        poly(RAINFALL, 6) + poly(HUMIDITY, 5) +  poly(TEMPERATURE, 5) + poly(DEW_POINT_TEMPERATURE,5) + 
+        HOUR_18 + HOUR_4 + HOUR_5 +HOUR_3,
+      data=bike_train
+        )
+glmnet_top10_pred <- model_prediction(glmnet_top10, bike_test)
+model_evaluation(glmnet_top10_pred) #rsq = 0.640, rmse = 381 (not good)
+```
+
+
+```{r}
+glmnet_top10_rsq = rsq(glmnet_top10_pred, truth = TRUTH, estimate = .pred)
+glmnet_top10_rmse = rmse(glmnet_top10_pred, truth = TRUTH, estimate = .pred)
+```
+
+
+```{r}
+# Fit Ridge Regression
+glmnet_ridge <- glmnet(x,y, alpha=0)
+glmnet_ridge_pred <- predict(glmnet_ridge, s=cv_ridge$lambda.min,
+                             newx = as.matrix(bike_test[,-1]))
+
+ridge_rmse = sqrt(mean( (bike_test[,1] - glmnet_ridge_pred)^2))
+ridge_rmse #365.06
+```
+
+
+```{r}
+ridge_mse = mean( (bike_test[,1] - glmnet_ridge_pred)^2)
+ridge_rsq = 1 - ridge_mse / var(bike_test[,1])
+ridge_rsq #0.667
+```
+```{r}
+# Fit Lasso
+glmnet_lasso <- glmnet(x,y,alpha=1)
+glm_lasso_pred <- predict(glmnet_lasso, s=cv_lasso$lambda.min,
+                          newx=as.matrix(bike_test[,-1]))
+
+lasso_rmse = sqrt(mean( (bike_test[,1] - glm_lasso_pred)^2))
+lasso_rmse #364.0492
+```
+
+
+```{r}
+lasso_mse = mean( (bike_test[,1] - glm_lasso_pred)^2)
+lasso_rsq = 1 - lasso_mse/var(bike_test[,1])
+lasso_rsq #0.6693
+```
+
+```{r}
+# Fit Elastic Net
+glmnet_elasticnet <- glmnet(x,y,alpha=0.7)
+glm_elasticnet_pred <- predict(glmnet_elasticnet, s=cv_elasticnet$lambda.min,
+                          newx=as.matrix(bike_test[,-1]))
+
+elasticnet_rmse = sqrt(mean( (bike_test[,1] - glm_elasticnet_pred)^2))
+elasticnet_rmse #364.0468
+```
+
+```{r}
+elasticnet_mse = mean( (bike_test[,1] - glm_elasticnet_pred)^2)
+elasticnet_rsq = 1 - elasticnet_mse/var(bike_test[,1])
+elasticnet_rsq #0.6693
+```
+
+
+Visualize the saved RMSE and R-squared values using a grouped barchart
+
+```{r}
+#Create data frame for group bar chart 
+model <- c(rep("glmnet_best",2), rep("glmnet_top10",2), 
+           rep("glmnet_ridge",2), rep("glmnet_lasso",2), rep("glmnet_elasticnet",2))
+stat <- rep(c("RSQ", "RMSE"),5)
+value <- c(glmnet_best_rsq$.estimate, glmnet_best_rmse$.estimate,
+           glmnet_top10_rsq$.estimate, glmnet_top10_rmse$.estimate,
+           ridge_rsq, ridge_rmse,
+           lasso_rsq,lasso_rmse,
+           elasticnet_rsq, elasticnet_rmse)
+model_df <-  data.frame(model, stat, value)
+print(model_df)
+```
+
+
+```{r}
+# Create group bar chart for rsq and rmse (model evaluation.png)
+model_df %>% 
+  ggplot(aes(fill=stat, x=model, y=value)) +
+  geom_bar(position="dodge", stat="identity")
+```
+
+
+Q-Q plot by plotting the distribution difference between the predictions generated by your best model and the true values on the test dataset.
+
+```{r}
+# Create a Q-Q chart for best model: glmnet_best (Q-Q chart.png)
+glmnet_best_pred %>% 
+  ggplot() +
+  stat_qq(aes(sample=TRUTH), color='green') +
+  stat_qq(aes(sample=.pred), color='red')
+```
+
+### Conclusion
+
+From the above analysis result, Fall, Spring, Summer and Temperatur are the 4 most important factors for bike rental number in Seoul city. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
